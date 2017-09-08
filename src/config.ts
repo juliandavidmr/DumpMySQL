@@ -3,8 +3,9 @@ export default {
         host: "localhost",
         user: "root",
         password: 'root',
-        database: 'prueba',
+        database: 'moodledistancia',
         dest: './data.sql' // destination file
     }, 
-    exitOnError: false
+    exitOnError: false,
+    showErrors: false
 }

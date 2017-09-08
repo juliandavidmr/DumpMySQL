@@ -56,19 +56,90 @@ export class Dump {
 							wstream.write(`${ddl};\n\n`)
 						})
 					} catch (error) {
-						console.log(error)
+						if (config.showErrors) {
+							console.log(error)
+						}
 
 						if (config.exitOnError) {
 							process.exit(1)
+							return reject(error)
 						}
-						return reject(error)
 					}
 
 					counter++
 
 					if (counter == countElementsDB) {
 						// wstream.end()
-						console.log("Success DDL!!!");
+						console.log("Success " + (counter - this.views.length) + " DDL Tables")
+						console.log("Success " + this.views.length + " DDL Views")
+						return resolve()
+					}
+				})
+			})
+		}
+
+		let generateDDLProcedures = () => {
+			return new Promise(async (resolve: Function, reject: Function): Promise<any> => {
+				// Generate statements inserts
+				counter = 0
+				let [rowsProcedures] = await this.connection.execute(queries.showProcedures());
+				rowsProcedures = this.normalizeObject(rowsProcedures)
+
+				let proceduresListDDL: Array<string> = []
+
+				rowsProcedures.map((it: any) => {
+					if (it["Db"] == config.credentials.database) { // only database actual
+						proceduresListDDL.push(it["Name"])
+					}
+				})
+				// console.log("Procedures:", proceduresListDDL);
+
+				proceduresListDDL.map(async (prc): Promise<any> => {
+					let [ddlProcedure] = await this.connection.execute(queries.showCreateProcedure(prc));
+					ddlProcedure = this.normalizeObject(ddlProcedure)
+					// console.log("DDL PR: ", ddlProcedure[0]["Create Procedure"])		
+					wstream.write(`${ddlProcedure[0]["Create Procedure"]};\n\n`)
+					counter++
+
+					if (counter == proceduresListDDL.length) {
+						// wstream.end()
+						console.log("Success " + counter + " DDL Procedures");
+						return resolve()
+					}
+				})
+			})
+		}
+
+		let generateDDLFunctions = () => {
+			return new Promise(async (resolve: Function, reject: Function): Promise<any> => {
+				// Generate statements inserts
+				counter = 0
+				let [rowsFunctions] = await this.connection.execute(queries.showFunctions());
+				rowsFunctions = this.normalizeObject(rowsFunctions)
+
+				let functionsListDDL: Array<string> = []
+
+				// console.log("Functions:", rowsFunctions);
+
+				rowsFunctions.map((it: any) => {
+					if (it["Db"] == config.credentials.database) { // only database actual
+						functionsListDDL.push(it["Name"])
+					}
+				})
+
+				functionsListDDL.map(async (fun): Promise<any> => {
+					// console.log("NAME procedure: ", fun);
+
+					let [ddlProcedure] = await this.connection.execute(queries.showCreateFunction(fun));
+					ddlProcedure = this.normalizeObject(ddlProcedure)
+					// console.log("DDL FN: ", ddlProcedure)	
+
+					wstream.write(`${ddlProcedure[0]["Create Function"]};\n\n`)
+					counter++
+
+					if (counter == functionsListDDL.length) {
+						// wstream.end()
+						console.log("Success " + counter + " DDL Functions");
 						return resolve()
 					}
 				})
@@ -92,7 +163,10 @@ export class Dump {
 								// console.log("Insert " + index + ":", statInsert);
 							})
 						} catch (error) {
-							console.log(error)
+							if (config.showErrors) {
+								console.log(error)
+							}
+
 							if (config.exitOnError) {
 								process.exit(1)
 							}
@@ -104,7 +178,7 @@ export class Dump {
 
 					if (counter == countElementsDB) {
 						// wstream.end()
-						console.log("Success statements inserts!!!");
+						console.log("Success statements inserts");
 						return resolve()
 					}
 				})
@@ -112,7 +186,9 @@ export class Dump {
 		}
 
 		await generateDDLTablesViews()
-		await generateStatementsInserts()
+		await generateDDLProcedures()
+		await generateDDLFunctions()
+		// await generateStatementsInserts()
 	}
 
 	fillOnlyViews(arg0: any[]): void {
@@ -141,7 +217,6 @@ export class Dump {
 					}
 				}
 			})
-			return l
 		} else if (typeof list === 'object') {
 			for (var key in list) {
 				if (list.hasOwnProperty(key)) {
