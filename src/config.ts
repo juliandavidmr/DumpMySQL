@@ -4,7 +4,7 @@ export default {
         user: "root",
         password: 'root',
         database: 'moodledistancia',
-        dest: './data.sql' // destination file
+        dest: 'out.sql' // destination file
     }, 
     exitOnError: false,
     showErrors: false

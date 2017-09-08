@@ -3,10 +3,12 @@ declare var require: any;
 declare var __dirname: string;
 declare var process: any;
 
-import * as mysql from "mysql2/promise";
+import * as mysql from "mysql2/promise"
 var fs = require('fs')
-import config from "./config";
-import queries from "./queries";
+import config from "./config"
+import queries from "./queries"
+const ora = require('ora');
+const spinner = ora('Loading database...').start();
 
 export class Dump {
 
@@ -14,7 +16,7 @@ export class Dump {
 	private views: Array<string> = []
 
 	constructor() {
-		console.log("Running...");
+		// console.log("Running...");
 	}
 
 	start() {
@@ -38,10 +40,12 @@ export class Dump {
 		// console.log("rows: ", rows);
 
 		// Prepare file
-		var wstream = fs.createWriteStream('out.sql', { encoding: "utf8" });
+		var wstream = fs.createWriteStream(config.credentials.dest, { encoding: "utf8" });
 
 		// Sentence create db
 		wstream.write(`CREATE DATABASE IF NOT EXISTS '${config.credentials.database}';\nUSE '${config.credentials.database}';\n`)
+
+		spinner.text = 'Loading DDL Tables'
 
 		let generateDDLTablesViews = (): Promise<any> => {
 			return new Promise((resolve: Function, reject: Function) => {
@@ -69,9 +73,10 @@ export class Dump {
 					counter++
 
 					if (counter == countElementsDB) {
+						spinner.succeed("Success " + (counter - this.views.length) + " DDL Tables")
 						// wstream.end()
-						console.log("Success " + (counter - this.views.length) + " DDL Tables")
-						console.log("Success " + this.views.length + " DDL Views")
+						// console.log("Success " + (counter - this.views.length) + " DDL Tables")
+						// console.log("Success " + this.views.length + " DDL Views")
 						return resolve()
 					}
 				})
@@ -79,6 +84,8 @@ export class Dump {
 		}
 
 		let generateDDLProcedures = () => {
+			spinner.start("Loading procedures...")
+
 			return new Promise(async (resolve: Function, reject: Function): Promise<any> => {
 				// Generate statements inserts
 				counter = 0
@@ -92,8 +99,8 @@ export class Dump {
 						proceduresListDDL.push(it["Name"])
 					}
 				})
-				// console.log("Procedures:", proceduresListDDL);
 
+				// console.log("Procedures:", proceduresListDDL);
 				proceduresListDDL.map(async (prc): Promise<any> => {
 					let [ddlProcedure] = await this.connection.execute(queries.showCreateProcedure(prc));
 					ddlProcedure = this.normalizeObject(ddlProcedure)
@@ -102,8 +109,9 @@ export class Dump {
 					counter++
 
 					if (counter == proceduresListDDL.length) {
+						spinner.succeed("Success " + counter + " DDL Procedures")
 						// wstream.end()
-						console.log("Success " + counter + " DDL Procedures");
+						// console.log("Success " + counter + " DDL Procedures");
 						return resolve()
 					}
 				})
@@ -111,6 +119,8 @@ export class Dump {
 		}
 
 		let generateDDLFunctions = () => {
+			spinner.start("Loading functions...")
+
 			return new Promise(async (resolve: Function, reject: Function): Promise<any> => {
 				// Generate statements inserts
 				counter = 0
@@ -138,8 +148,9 @@ export class Dump {
 					counter++
 
 					if (counter == functionsListDDL.length) {
+						spinner.succeed("Success " + counter + " DDL Functions")
 						// wstream.end()
-						console.log("Success " + counter + " DDL Functions");
+						// console.log("Success " + counter + " DDL Functions");
 						return resolve()
 					}
 				})
@@ -147,9 +158,11 @@ export class Dump {
 		}
 
 		let generateStatementsInserts = () => {
+			spinner.start("Loading inserts statements...")
 			return new Promise((resolve: Function, reject: Function) => {
 				// Generate statements inserts
 				counter = 0
+				let countInserts = 0
 				rows.map(async (table: string): Promise<any> => {
 					if (this.views.indexOf(table) == -1) {
 						try {
@@ -157,9 +170,12 @@ export class Dump {
 							rowsTable = this.normalizeObject(rowsTable)
 
 							// console.log("ROWS:", rowsTable);
+							wstream.write(`-- Inserts ${table}\n`)
 							rowsTable.map((dataItem: any, index: number) => {
 								let statInsert = queries.createInsert(table, Object.keys(dataItem), this.getOnlyValues(dataItem))
 								wstream.write(`${statInsert}\n`)
+
+								spinner.text = "Created insert #" + countInserts++
 								// console.log("Insert " + index + ":", statInsert);
 							})
 						} catch (error) {
@@ -169,16 +185,18 @@ export class Dump {
 
 							if (config.exitOnError) {
 								process.exit(1)
+
+								return reject(error)
 							}
-							return reject(error)
 						}
 					}
 
 					counter++
 
 					if (counter == countElementsDB) {
+						spinner.succeed("Success " + countInserts + " statements inserts")
 						// wstream.end()
-						console.log("Success statements inserts");
+						// console.log("Success statements inserts");
 						return resolve()
 					}
 				})
@@ -188,7 +206,7 @@ export class Dump {
 		await generateDDLTablesViews()
 		await generateDDLProcedures()
 		await generateDDLFunctions()
-		// await generateStatementsInserts()
+		await generateStatementsInserts()
 	}
 
 	fillOnlyViews(arg0: any[]): void {
