@@ -43,7 +43,7 @@ export class Dump {
 		var wstream = fs.createWriteStream(config.credentials.dest, { encoding: "utf8" });
 
 		// Sentence create db
-		wstream.write(`CREATE DATABASE IF NOT EXISTS '${config.credentials.database}';\nUSE '${config.credentials.database}';\n`)
+		wstream.write(queries.createDb(config.credentials.database))
 
 		spinner.text = 'Loading DDL Tables'
 
@@ -83,7 +83,7 @@ export class Dump {
 			})
 		}
 
-		let generateDDLProcedures = () => {
+		let generateDDLProcedures = (): Promise<any> => {
 			spinner.start("Loading procedures...")
 
 			return new Promise(async (resolve: Function, reject: Function): Promise<any> => {
@@ -118,7 +118,7 @@ export class Dump {
 			})
 		}
 
-		let generateDDLFunctions = () => {
+		let generateDDLFunctions = (): Promise<any> => {
 			spinner.start("Loading functions...")
 
 			return new Promise(async (resolve: Function, reject: Function): Promise<any> => {
@@ -157,7 +157,7 @@ export class Dump {
 			})
 		}
 
-		let generateStatementsInserts = () => {
+		let generateStatementsInserts = (): Promise<any> => {
 			spinner.start("Loading inserts statements...")
 			return new Promise((resolve: Function, reject: Function) => {
 				// Generate statements inserts
