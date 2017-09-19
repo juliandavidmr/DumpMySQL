@@ -66,7 +66,7 @@ export class Dump {
 						})
 					} catch (error) {
 						if (config.showErrors) {
-							console.log(error)
+							console.error(error)
 						}
 
 						if (config.exitOnError) {
