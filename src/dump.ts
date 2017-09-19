@@ -14,6 +14,7 @@ export class Dump {
 
 	private connection: any
 	private views: Array<string> = []
+	private wstream: any
 
 	constructor() {
 		// console.log("Running...");
@@ -23,11 +24,16 @@ export class Dump {
 		this.generateDDL()
 	}
 
-	async getConnection(): Promise<any> {
+	private async getConnection(): Promise<any> {
 		this.connection = await mysql.createConnection(config.credentials)
 	}
 
-	async generateDDL(): Promise<any> {
+	private createFile() {
+		// Prepare file
+		this.wstream = fs.createWriteStream(config.credentials.dest, { encoding: "utf8" });
+	}
+
+	private async generateDDL(): Promise<any> {
 		await this.getConnection()
 
 		let [rows, fields] = await this.connection.execute(queries.listTables);
@@ -39,11 +45,10 @@ export class Dump {
 
 		// console.log("rows: ", rows);
 
-		// Prepare file
-		var wstream = fs.createWriteStream(config.credentials.dest, { encoding: "utf8" });
+		this.createFile()
 
 		// Sentence create db
-		wstream.write(queries.createDb(config.credentials.database))
+		this.wstream.write(queries.createDb(config.credentials.database))
 
 		spinner.text = 'Loading DDL Tables'
 
@@ -57,7 +62,7 @@ export class Dump {
 						this.fillOnlyViews(rowsddl)
 						rowsddl = this.getDDLItems(rowsddl)
 						rowsddl.map((ddl: string) => {
-							wstream.write(`${ddl};\n\n`)
+							this.wstream.write(`${ddl};\n\n`)
 						})
 					} catch (error) {
 						if (config.showErrors) {
@@ -74,7 +79,7 @@ export class Dump {
 
 					if (counter == countElementsDB) {
 						spinner.succeed("Success " + (counter - this.views.length) + " DDL Tables")
-						// wstream.end()
+						// this.wstream.end()
 						// console.log("Success " + (counter - this.views.length) + " DDL Tables")
 						// console.log("Success " + this.views.length + " DDL Views")
 						return resolve()
@@ -105,12 +110,12 @@ export class Dump {
 					let [ddlProcedure] = await this.connection.execute(queries.showCreateProcedure(prc));
 					ddlProcedure = this.normalizeObject(ddlProcedure)
 					// console.log("DDL PR: ", ddlProcedure[0]["Create Procedure"])		
-					wstream.write(`${ddlProcedure[0]["Create Procedure"]};\n\n`)
+					this.wstream.write(`${ddlProcedure[0]["Create Procedure"]};\n\n`)
 					counter++
 
 					if (counter == proceduresListDDL.length) {
 						spinner.succeed("Success " + counter + " DDL Procedures")
-						// wstream.end()
+						// this.wstream.end()
 						// console.log("Success " + counter + " DDL Procedures");
 						return resolve()
 					}
@@ -144,12 +149,12 @@ export class Dump {
 					ddlProcedure = this.normalizeObject(ddlProcedure)
 					// console.log("DDL FN: ", ddlProcedure)	
 
-					wstream.write(`${ddlProcedure[0]["Create Function"]};\n\n`)
+					this.wstream.write(`${ddlProcedure[0]["Create Function"]};\n\n`)
 					counter++
 
 					if (counter == functionsListDDL.length) {
 						spinner.succeed("Success " + counter + " DDL Functions")
-						// wstream.end()
+						// this.wstream.end()
 						// console.log("Success " + counter + " DDL Functions");
 						return resolve()
 					}
@@ -166,21 +171,38 @@ export class Dump {
 				rows.map(async (table: string): Promise<any> => {
 					if (this.views.indexOf(table) == -1) {
 						try {
-							let [rowsTable, fieldsTable] = await this.connection.execute(queries.selectData(table));
-							rowsTable = this.normalizeObject(rowsTable)
+							// console.log(`Prepare table ${table}`);
+
+							let [rowsTable] = await this.connection.execute(queries.selectData(table));
+							rowsTable = this.normalizeObject(rowsTable) as Array<any>
 
 							// console.log("ROWS:", rowsTable);
-							wstream.write(`-- Inserts ${table}\n`)
-							rowsTable.map((dataItem: any, index: number) => {
-								let statInsert = queries.createInsert(table, Object.keys(dataItem), this.getOnlyValues(dataItem))
-								wstream.write(`${statInsert}\n`)
+							this.wstream.write(`-- Inserts ${table}\n`)
 
-								spinner.text = "Created insert #" + countInserts++
-								// console.log("Insert " + index + ":", statInsert);
+							rowsTable.map((dataItem: any) => {
+								let columns = Object.keys(dataItem)
+								let values = this.getOnlyValues(dataItem)
+
+								for (var v in values) {
+									if (v.indexOf('\'') !== -1) {
+										v = v.replace('\'', '\\\'');
+									}
+								}
+
+								if (Array.isArray(columns) && Array.isArray(values)) {
+									let statementInsert = "INSERT INTO " + table + "(" + columns.join(",") + ") VALUES('" + values.join('\',\'') + "');";
+									// let statementInsert = queries.createInsert(table, columns, values)
+									// console.log(">", statementInsert)
+
+									this.wstream.write(`${statementInsert}\n`)
+
+									spinner.text = "Created insert #" + countInserts++
+									// console.log("Insert " + index + ":", statementInsert);
+								}
 							})
 						} catch (error) {
 							if (config.showErrors) {
-								console.log(error)
+								console.error(error)
 							}
 
 							if (config.exitOnError) {
@@ -195,7 +217,7 @@ export class Dump {
 
 					if (counter == countElementsDB) {
 						spinner.succeed("Success " + countInserts + " statements inserts")
-						// wstream.end()
+						// this.wstream.end()
 						// console.log("Success statements inserts");
 						return resolve()
 					}
